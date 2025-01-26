@@ -1,7 +1,5 @@
 # Home Prices Analysis Project
 
-![Housing Market](https://imgur.com/xyz123.png) *Replace with a relevant image*
-
 ## Overview
 This project analyzes U.S. housing market trends using Redfin data, exploring relationships between supply metrics, price changes, and temporal patterns. Developed by Colton Dumm and Ryan Quinlan for a data science course.
 
