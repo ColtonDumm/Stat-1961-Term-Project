@@ -157,6 +157,32 @@ percent_price_drops_plot
 ```
 
 
+### Narrowing down to PA metro and county data
+```{r}
+#obtain county data for PA
+library(dplyr)
+pa_data_county <- redfin_data %>% 
+  filter(grepl(", PA$", region_name))
+```
+
+```{r}
+head(pa_data_county)
+```
+
+```{r}
+#obtain metro data for PA
+pa_data_metro = redfin_data %>%
+  filter(grepl(", PA metro area$", region_name))
+```
+
+
+```{r}
+head(pa_data_metro)
+```
+
+
+
+
 
 
 
