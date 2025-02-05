@@ -180,7 +180,141 @@ pa_data_metro = redfin_data %>%
 head(pa_data_metro)
 ```
 
+```{r}
+# Filter the data to get the PA data
+pa_data <- redfin_data %>%
+  filter(grepl("PA", region_name)) # Filters rows where region_name contains "PA"
+```
 
+Now we will break the data set into the different duration of observations of weekly, monthly, and quarterly
+```{r}
+# Subset for 1-week duration
+pa_1_week_county <- pa_data_county %>%
+  filter(duration == "1 weeks")
+
+# Subset for 4-week duration
+pa_1_week_county <- pa_data_county %>%
+  filter(duration == "4 weeks")
+
+# Subset for 12-week duration
+pa_12_weeks_county <- pa_data_county %>%
+  filter(duration == "12 weeks")
+```
+
+
+```{r}
+# Summarize median sale price trends for each subset
+summary_1_week <- pa_1_week_county %>%
+  group_by(period_begin) %>%
+  summarize(median_sale_price = mean(median_sale_price, na.rm = TRUE))
+
+summary_4_weeks <- pa_1_week_county %>%
+  group_by(period_begin) %>%
+  summarize(median_sale_price = mean(median_sale_price, na.rm = TRUE))
+
+summary_12_weeks <- pa_12_weeks_county %>%
+  group_by(period_begin) %>%
+  summarize(median_sale_price = mean(median_sale_price, na.rm = TRUE))
+```
+
+```{r}
+# Load ggplot2 for visualization
+library(ggplot2)
+
+# Plot for 1-week data
+ggplot(summary_1_week, aes(x = period_begin, y = median_sale_price)) +
+  geom_line(color = "blue") +
+  labs(title = "Median Sale Price (1 Week)", x = "Period Begin", y = "Median Sale Price") +
+  theme_minimal()
+
+# Plot for 4-week data
+ggplot(summary_4_weeks, aes(x = period_begin, y = median_sale_price)) +
+  geom_line(color = "green") +
+  labs(title = "Median Sale Price (4 Weeks)", x = "Period Begin", y = "Median Sale Price") +
+  theme_minimal()
+
+# Plot for 12-week data
+ggplot(summary_12_weeks, aes(x = period_begin, y = median_sale_price)) +
+  geom_line(color = "red") +
+  labs(title = "Median Sale Price (12 Weeks)", x = "Period Begin", y = "Median Sale Price") +
+  theme_minimal()
+```
+
+
+
+
+## Buyer or Seller markets in each PA County
+
+Now we will dive into the analysis of which counties are buyer or seller markets: 
+```{r}
+# Classify counties as buyer or seller markets
+market_conditions <- pa_12_weeks_county %>%
+  group_by(region_name) %>%
+  summarize(
+    median_months_of_supply = median(months_of_supply, na.rm = TRUE)
+  ) %>%
+  mutate(market_type = case_when(
+    median_months_of_supply < 5 ~ "Seller's Market",
+    median_months_of_supply > 7 ~ "Buyer's Market",
+    TRUE ~ "Balanced Market"
+  ))
+
+# View results
+print(market_conditions)
+```
+
+Visualization of the results
+```{r}
+# Count the number of counties in each market type
+market_summary <- market_conditions %>%
+  group_by(market_type) %>%
+  summarize(count = n())
+
+# Create a bar plot of market types
+ggplot(market_summary, aes(x = market_type, y = count, fill = market_type)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Distribution of Market Types Across PA Counties",
+    x = "Market Type",
+    y = "Number of Counties"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("Seller's Market" = "red", "Balanced Market" = "gray", "Buyer's Market" = "blue"))
+```
+
+## Growth of each county and metro ranked 
+
+```{r}
+# Calculate medians for all numeric features grouped by region_name
+region_medians <- pa_12_weeks_county %>%
+  group_by(region_name) %>%
+  summarize(across(where(is.numeric), ~ median(.x, na.rm = TRUE)))
+
+# Add in all of the non-numeric features that are applicable
+region_medians <- pa_12_weeks_county %>%
+  group_by(region_name) %>%
+  summarize(
+    region_type = first(region_type), # Take the first value of region_type
+    duration = unique(duration), # Take unique values of duration
+    across(where(is.numeric), ~ median(.x, na.rm = TRUE))
+  )
+
+# View the resulting dataset
+print(region_medians)
+```
+
+```{r}
+# Create a histogram of median_sale_price_yoy
+ggplot(region_medians, aes(x = median_sale_price_yoy)) +
+  geom_histogram(binwidth = 0.01, fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Distribution of Median Sale Price Year over Year Growth Across Pa Counties",
+    x = "Median Sale Price YoY Growth (%)",
+    y = "Count"
+  ) +
+  theme_minimal() +
+  scale_x_continuous(labels = scales::percent) 
+```
 
 
 
