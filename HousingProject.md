@@ -348,7 +348,6 @@ head(acs_vars)
 ```
 
 Pull in all of the data we need from the census for the years 2012 to 2023 and transform it into the correct form
-This is our bread and butter data and has all counties from 2012 to 2023
 ```{r}
 # This is for the 5 year averages
 
@@ -368,16 +367,23 @@ for (year in years) {
     variables = c(
       total_population = "B01003_001", # Total population
       median_household_income = "B19013_001", # Median household income
-      poverty_rate = "C17002_002", # Poverty rate
+      poverty_rate = "C17002_001", # Poverty rate
       median_home_value = "B25077_001", # Median home value
       homeownership_rate_owner = "B25003_002", # Owner-occupied housing
       homeownership_rate_renter = "B25003_003", # Renter-occupied housing
+      total_pop_over_25 = "B15003_001",       # The amount of the population over 25 which is what the education counts count for 
+      total_accounted_for = "B15003_001",     # This is the total amount of educational categories accounted for
       high_school_graduates = "B15003_017", # High school graduates
       associates_degree = "B15003_021", # Associates degree
       bachelor_degree = "B15003_022", # Bachelor’s degree
       masters_degree = "B15003_023", # Masters degree
       unemployment = "B23025_005", # Unemployed
-      labor_force = "B23025_003" # Labor force
+      labor_force = "B23025_003", # Labor force
+      insured_pop = "B27001_001", # Population that is insured
+      total_households = "B11001_001",  # Total amount of households
+      household_children = "B11001_002",  # Households that have children
+      single_parent_households = "B11005_002" # Single parent households
+      
     ),
     state = "PA",
     year = year,
@@ -405,7 +411,6 @@ combined_data_5year <- bind_rows(all_data)
 # View the combined data
 print(combined_data_5year)
 ```
-
 
 
 
