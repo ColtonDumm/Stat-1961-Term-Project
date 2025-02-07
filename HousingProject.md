@@ -367,7 +367,9 @@ for (year in years) {
     variables = c(
       total_population = "B01003_001", # Total population
       median_household_income = "B19013_001", # Median household income
-      poverty_rate = "C17002_001", # Poverty rate
+      poverty_rate_total = "C17002_001", # Poverty rate
+      pop_poverty_under_0.5 = "C17002_002", # Extremely poor
+      pop_poverty_0.5_to_0.99 = "C17002_003", # Below the poverty line
       median_home_value = "B25077_001", # Median home value
       homeownership_rate_owner = "B25003_002", # Owner-occupied housing
       homeownership_rate_renter = "B25003_003", # Renter-occupied housing
