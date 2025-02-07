@@ -380,7 +380,7 @@ for (year in years) {
       bachelor_degree = "B15003_022", # Bachelor’s degree
       masters_degree = "B15003_023", # Masters degree
       professional_school_degree = "B15003_024", # Professional school degree
-      doctorate_degree = "Doctorate degree", #Doctorate degree
+      doctorate_degree = "B15003_025", #Doctorate degree
       unemployment = "B23025_005", # Unemployed
       labor_force = "B23025_003", # Labor force
       insured_pop = "B27001_001", # Population that is insured
@@ -417,5 +417,3 @@ combined_data_5year <- bind_rows(all_data)
 # View the combined data
 print(combined_data_5year)
 ```
-
-
