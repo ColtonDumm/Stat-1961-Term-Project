@@ -317,7 +317,94 @@ ggplot(region_medians, aes(x = median_sale_price_yoy)) +
 ```
 
 
+# Treating this point as the start of the data set rebuild: 
+First we will need to gather the housing data. This is the county data from redfin that may be more accurate: 
 
+```{r}
+# Read in the county data
+redfin_county_data <-  read_tsv("county_market_tracker.tsv000")
+```
+Narrow it down to just PA counties
+```{r}
+# Filter the dataset to include only Pennsylvania counties
+pa_counties <- redfin_county_data %>%
+  filter(state_code == "PA", property_type == "All Residential")
+```
+
+Next we need to gather the US Census data from 2012 - 2023 (2024+ data has not been posted)
+```{r}
+# This is the individual key to pull data from the US  Census API
+library(tidycensus)
+
+#census_api_key("f4d11303611baacc118cb4efc72dcc127a506176", install = TRUE)
+```
+These are all of the variables that we can search through from the census data
+```{r}
+# Load all variables for ACS 2020 5-year estimates
+acs_vars <- load_variables(2020, "acs5", cache = TRUE)
+
+# View the first few rows of the variable list
+head(acs_vars)
+```
+
+Pull in all of the data we need from the census for the years 2012 to 2023 and transform it into the correct form
+This is our bread and butter data and has all counties from 2012 to 2023
+```{r}
+# This is for the 5 year averages
+
+# Define the years 
+years <- seq(2012, 2023, by = 1) # 2024 is not posted yet nor is 2025 as it is currently 2025
+
+# Initialize an empty list to store data for each year
+all_data <- list()
+
+# Loop through each year and pull data
+for (year in years) {
+  cat("Pulling data for year:", year, "\n")
+  
+  # Pull ACS 5-Year Estimates for Pennsylvania counties
+  pa_acs <- get_acs(
+    geography = "county",
+    variables = c(
+      total_population = "B01003_001", # Total population
+      median_household_income = "B19013_001", # Median household income
+      poverty_rate = "C17002_002", # Poverty rate
+      median_home_value = "B25077_001", # Median home value
+      homeownership_rate_owner = "B25003_002", # Owner-occupied housing
+      homeownership_rate_renter = "B25003_003", # Renter-occupied housing
+      high_school_graduates = "B15003_017", # High school graduates
+      associates_degree = "B15003_021", # Associates degree
+      bachelor_degree = "B15003_022", # Bachelor’s degree
+      masters_degree = "B15003_023", # Masters degree
+      unemployment = "B23025_005", # Unemployed
+      labor_force = "B23025_003" # Labor force
+    ),
+    state = "PA",
+    year = year,
+    survey = "acs5", 
+    geometry = FALSE
+  )
+  
+  # Reshape the data from long to wide format
+  pa_acs_wide <- pa_acs %>%
+    select(-moe) %>% # Remove margin of error column if not needed
+    pivot_wider(
+      names_from = variable, # Use variable names as column headers
+      values_from = estimate # Use estimate values as cell values
+    ) %>%
+    mutate(year = year) %>% # Add a year column
+    select(year, NAME, everything()) # Reorder columns to put year first
+  
+  # Store the data in the list
+  all_data[[as.character(year)]] <- pa_acs_wide
+}
+
+# Combine all yearly data into a single dataframe
+combined_data_5year <- bind_rows(all_data)
+
+# View the combined data
+print(combined_data_5year)
+```
 
 
 
