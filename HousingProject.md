@@ -384,7 +384,9 @@ for (year in years) {
       insured_pop = "B27001_001", # Population that is insured
       total_households = "B11001_001",  # Total amount of households
       household_children = "B11001_002",  # Households that have children
-      single_parent_households = "B11005_002" # Single parent households
+      household_married = "B11005_004", # Married couple in the house
+      single_male_parent_households = "B11005_006", # Single male parent households
+      single_female_parent_households = "B11005_007"  # Single female parent households
       
     ),
     state = "PA",
