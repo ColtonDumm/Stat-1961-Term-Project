@@ -417,3 +417,23 @@ combined_data_5year <- bind_rows(all_data)
 # View the combined data
 print(combined_data_5year)
 ```
+
+Generating the percentages for all of the features in the data
+```{r}
+combined_data_5year <- combined_data_5year %>%
+  mutate(
+    households_with_children_percent = (household_children / total_households) * 100,
+    households_married_percent = (household_married / total_households) * 100,
+    single_male_parent_household_percent = (single_male_parent_households / total_households) * 100,
+    single_female_parent_household_percent = (single_female_parent_households / total_households) * 100,
+    high_school_graduates_percent = (high_school_graduates / total_pop_over_25) * 100,
+    higher_education_percent = ((associates_degree+bachelor_degree+masters_degree) / total_pop_over_25) * 100,
+    labor_force_percent = (labor_force / total_population) * 100,
+    unemployment_percent = (unemployment / total_population) * 100,
+    homeownership_owner_percent = (homeownership_rate_owner / total_pop_over_25) * 100,
+    homeownership_renter_percent = (homeownership_rate_renter / total_pop_over_25) * 100,
+    insured_percent = (insured_pop / total_population) * 100,
+    poverty_percent = ((pop_poverty_under_0.5+pop_poverty_0.5_to_0.99) / poverty_rate_total) * 100,
+    severe_poverty_percent = (pop_poverty_under_0.5 / poverty_rate_total) * 100
+  )
+```
