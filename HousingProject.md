@@ -437,3 +437,12 @@ combined_data_5year <- combined_data_5year %>%
     severe_poverty_percent = (pop_poverty_under_0.5 / poverty_rate_total) * 100
   )
 ```
+
+Break ou the data into months
+```{r}
+# Expand yearly data to monthly
+monthly_data <- combined_data_5year %>%
+  mutate(month = list(seq(1, 12))) %>%  
+  unnest(month) %>%                    
+  arrange(year, month)  
+```
