@@ -418,24 +418,39 @@ combined_data_5year <- bind_rows(all_data)
 print(combined_data_5year)
 ```
 
-Generating the percentages for all of the features in the data
+Generating the percentages for all of the features in the data and new percentages that may be important
 ```{r}
 combined_data_5year <- combined_data_5year %>%
   mutate(
     households_with_children_percent = (household_children / total_households) * 100,
     households_married_percent = (household_married / total_households) * 100,
+    single_parent_household_percent = ((single_male_parent_households + single_female_parent_households) / total_households) * 100,
     single_male_parent_household_percent = (single_male_parent_households / total_households) * 100,
     single_female_parent_household_percent = (single_female_parent_households / total_households) * 100,
     high_school_graduates_percent = (high_school_graduates / total_pop_over_25) * 100,
-    higher_education_percent = ((associates_degree+bachelor_degree+masters_degree) / total_pop_over_25) * 100,
+    higher_education_percent = ((associates_degree+bachelor_degree+masters_degree+professional_school_degree
+      + doctorate_degree) / total_pop_over_25) * 100,
+    advanced_degree_percent = ((masters_degree + professional_school_degree + doctorate_degree) / total_pop_over_25) * 100,
+    advanced_vs_bachelor_percent = ((masters_degree + professional_school_degree + doctorate_degree) / bachelor_degree) * 100,
+    associates_degree_percent = (associates_degree / total_pop_over_25) * 100,
+    bachelor_degree_percent = (bachelor_degree / total_pop_over_25) * 100,
+    professional_school_degree_percent = (professional_school_degree / total_pop_over_25) * 100,
+    doctorate_degree_percent = (doctorate_degree / total_pop_over_25) * 100,
     labor_force_percent = (labor_force / total_population) * 100,
     unemployment_percent = (unemployment / total_population) * 100,
-    homeownership_owner_percent = (homeownership_rate_owner / total_pop_over_25) * 100,
-    homeownership_renter_percent = (homeownership_rate_renter / total_pop_over_25) * 100,
+    owner_household_percent = (homeownership_rate_owner / total_households) * 100,
+    renter_household_percent = (homeownership_rate_renter / total_households) * 100,
+    owner_renter_ratio_percent = (homeownership_rate_owner / (homeownership_rate_owner + homeownership_rate_renter)) * 100,
     insured_percent = (insured_pop / total_population) * 100,
+    uninsured_percent = 100 - insured_percent,
     poverty_percent = ((pop_poverty_under_0.5+pop_poverty_0.5_to_0.99) / poverty_rate_total) * 100,
-    severe_poverty_percent = (pop_poverty_under_0.5 / poverty_rate_total) * 100
-  )
+    severe_poverty_percent = (pop_poverty_under_0.5 / poverty_rate_total) * 100,
+    pop_over_25_percent = (total_pop_over_25 / total_population) * 100,
+    pop_under_25_percent = ((total_population - total_pop_over_25) / total_population) * 100,
+    unemployment_rate = (unemployment / labor_force) * 100,
+    not_in_labor_force_percent = ((total_population - labor_force) / total_population) * 100,
+    non_high_school_grad_percent = ((total_pop_over_25 - high_school_graduates) / total_pop_over_25) * 100
+    )
 ```
 
 Break out the data into months in a yearly step style
