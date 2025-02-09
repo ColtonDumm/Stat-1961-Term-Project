@@ -484,4 +484,9 @@ for (col in num_cols) {
 # keep the desired coulums
 monthly_data <- monthly_data %>%
   select(year_month, NAME, GEOID, month, all_of(num_cols))
+
+# Round all of the relevant features up so we do not have half of a person for example in our population count
+cols_to_round <- num_cols[!grepl("percent", num_cols, ignore.case = TRUE)]
+monthly_data <- monthly_data %>%
+  mutate(across(all_of(cols_to_round), ceiling))
 ```
