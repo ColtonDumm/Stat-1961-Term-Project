@@ -438,11 +438,50 @@ combined_data_5year <- combined_data_5year %>%
   )
 ```
 
-Break ou the data into months
+Break out the data into months in a yearly step style
 ```{r}
 # Expand yearly data to monthly
-monthly_data <- combined_data_5year %>%
+monthly_data_step <- combined_data_5year %>%
   mutate(month = list(seq(1, 12))) %>%  
   unnest(month) %>%                    
   arrange(year, month)  
+```
+
+Now we need to make the data into monthly form and to do this we will assume a linear change between each yearly data point and use that to generate the monthly data. This is a mildly strong assumption however since the data is already a 5 year aggrigate and the data is collected all year round to make the final number we are going to move forward with our idea to convert it to linear monthly data. There is no other way to do this unless we stick to having the yearly values be static and jump up each new year. 
+```{r}
+# Gather the numeric columns that will be transitioned to monthly
+num_cols <- names(combined_data_5year)[sapply(combined_data_5year, is.numeric)]
+num_cols <- setdiff(num_cols, "year")
+
+# For each county make new columns for the next year value
+combined_data_5year <- combined_data_5year %>%
+  group_by(NAME) %>%
+  arrange(year) %>%
+  # Create a new column for each numeric column that holds the next year value
+  mutate(across(all_of(num_cols), ~ lead(.x), .names = "next_{.col}")) %>%
+  ungroup()
+
+# Remove the final year as it would be flat and not adjusted
+data_for_interp <- combined_data_5year %>%
+  filter(!is.na(next_total_population))
+
+# Expand the data so the yearly values have 12 new rows
+monthly_data <- data_for_interp %>%
+  uncount(12, .id = "month") %>%  # make the month column
+  mutate(year_month = year + (month - 1) / 12)  # make the year month decimal value
+
+# Calculate each month value
+#   Formula: monthly_value = current_year_value + (month/12) * (next_year_value - current_year_value)
+for (col in num_cols) {
+  # Get the names of the current and next values
+  cur_col  <- col
+  next_col <- paste0("next_", col)
+  
+  monthly_data[[col]] <- monthly_data[[cur_col]] +
+    (monthly_data$month / 12) * (monthly_data[[next_col]] - monthly_data[[cur_col]])
+}
+
+# keep the desired coulums
+monthly_data <- monthly_data %>%
+  select(year_month, NAME, GEOID, month, all_of(num_cols))
 ```
