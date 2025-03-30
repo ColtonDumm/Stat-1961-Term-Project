@@ -1,0 +1,1167 @@
+---
+title: "Home Prices Project"
+author: "Colton Dumm and Ryan Quinlan"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+### This is the link to the redfin data that is used in the project for download. 
+
+Warning it is 2 gb so it will take a second to load in and use. This is the link: https://redfin-public-data.s3.us-west-2.amazonaws.com/redfin_covid19/weekly_housing_market_data_most_recent.tsv000
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load in all of the necessary data and libraries for the project
+
+```{r}
+# Load all of the necessary libraries 
+library(dplyr)
+library(readr)
+library(tidyverse)
+library(tidyr)
+library(scales) # For dollar formatting
+```
+
+```{r}
+# Read in the county data
+redfin_county_data <-  read_tsv("county_market_tracker.tsv000")
+```
+
+# Basically Restart and make the new data set
+
+```{r}
+library(tidycensus)
+
+#census_api_key("ba2d1301c6626d7046eb37c555b92ce300625a35", install = TRUE)
+```
+
+```{r}
+# Load all variables for ACS 2020 5-year estimates
+acs_vars <- load_variables(2020, "acs5", cache = TRUE)
+
+# View the first few rows of the variable list
+head(acs_vars)
+```
+
+
+Test of if the census data can be used to get all of the background data we will need
+```{r}
+# Test for 2020
+pa_acs <- get_acs(
+  geography = "county",
+  variables = c(
+    total_population = "B01003_001", # Total population
+        median_household_income = "B19013_001", # Median household income
+        poverty_rate = "C17002_002", # Poverty rate
+        median_home_value = "B25077_001", # Median home value
+        homeownership_rate_owner = "B25003_002", # Owner-occupied housing
+        homeownership_rate_renter = "B25003_003", # Renter-occupied housing
+        # All education stats are for people over 25
+        high_school_graduates = "B15003_017", # High school graduates
+        associates_degree = "B15003_021", # Associates degree
+        bachelor_degree = "B15003_022", # Bachelor’s degree
+        masters_degree = "B15003_023", # Masters degree
+        unemployment = "B23025_005", # Unemployed
+        labor_force = "B23025_003" # Labor force
+  ),
+  state = "PA",
+  year = 2020,
+  geometry = FALSE
+)
+
+# View the data
+print(pa_acs)
+```
+
+Pull in all of the data we need from the census for the years 2012 to 2023
+```{r}
+# Load necessary libraries
+library(tidycensus)
+library(dplyr)
+library(tidyr)
+
+# Pull ACS data for Pennsylvania counties (2020)
+pa_acs <- get_acs(
+  geography = "county",
+  variables = c(
+    total_population = "B01003_001", # Total population
+    median_household_income = "B19013_001", # Median household income
+    poverty_rate = "C17002_002", # Poverty rate
+    median_home_value = "B25077_001", # Median home value
+    homeownership_rate_owner = "B25003_002", # Owner-occupied housing
+    homeownership_rate_renter = "B25003_003", # Renter-occupied housing
+    high_school_graduates = "B15003_017", # High school graduates
+    associates_degree = "B15003_021", # Associates degree
+    bachelor_degree = "B15003_022", # Bachelor’s degree
+    masters_degree = "B15003_023", # Masters degree
+    unemployment = "B23025_005", # Unemployed
+    labor_force = "B23025_003" # Labor force
+  ),
+  state = "PA",
+  year = 2023, #only works 2012 and up to 2023
+  geometry = FALSE
+)
+
+# Reshape the data from long to wide format
+pa_acs_wide <- pa_acs %>%
+  select(-moe) %>% # Remove margin of error column if not needed
+  pivot_wider(
+    names_from = variable, # Use variable names as column headers
+    values_from = estimate # Use estimate values as cell values
+  ) %>%
+  mutate(year = 2023) %>% # Add a year column
+  select(year, NAME, everything()) # Reorder columns to put year first
+
+# View the reshaped data
+print(pa_acs_wide)
+```
+
+This is our bread and butter data and has all counties from 2012 to 2023
+```{r}
+# This is for the 5 year averages
+
+# Define the years 
+years <- seq(2012, 2023, by = 1) # 2024 is not posted yet nor is 2025 as it is currently 2025
+
+# Initialize an empty list to store data for each year
+all_data <- list()
+
+# Loop through each year and pull data
+for (year in years) {
+  cat("Pulling data for year:", year, "\n")
+  
+  # Pull ACS 5-Year Estimates for Pennsylvania counties
+  pa_acs <- get_acs(
+    geography = "county",
+    variables = c(
+      total_population = "B01003_001", # Total population
+      median_household_income = "B19013_001", # Median household income
+      poverty_rate_total = "C17002_001", # Poverty rate
+      pop_poverty_under_0.5 = "C17002_002", # Extremely poor
+      pop_poverty_0.5_to_0.99 = "C17002_003", # Below the poverty line
+      median_home_value = "B25077_001", # Median home value
+      homeownership_rate_owner = "B25003_002", # Owner-occupied housing
+      homeownership_rate_renter = "B25003_003", # Renter-occupied housing
+      total_pop_over_25 = "B15003_001",       # The amount of the population over 25 which is what the education counts count for 
+      total_accounted_for = "B15003_001",     # This is the total amount of educational categories accounted for
+      high_school_graduates = "B15003_017", # High school graduates
+      associates_degree = "B15003_021", # Associates degree
+      bachelor_degree = "B15003_022", # Bachelor’s degree
+      masters_degree = "B15003_023", # Masters degree
+      professional_school_degree = "B15003_024", # Professional school degree
+      doctorate_degree = "B15003_025", #Doctorate degree
+      unemployment = "B23025_005", # Unemployed
+      labor_force = "B23025_003", # Labor force
+      insured_pop = "B27001_001", # Population that is insured
+      total_households = "B11001_001",  # Total amount of households
+      household_children = "B11001_002",  # Households that have children
+      household_married = "B11005_004", # Married couple in the house
+      single_male_parent_households = "B11005_006", # Single male parent households
+      single_female_parent_households = "B11005_007"  # Single female parent households
+      
+    ),
+    state = "PA",
+    year = year,
+    survey = "acs5", 
+    geometry = FALSE
+  )
+  
+  # Reshape the data from long to wide format
+  pa_acs_wide <- pa_acs %>%
+    select(-moe) %>% # Remove margin of error column if not needed
+    pivot_wider(
+      names_from = variable, # Use variable names as column headers
+      values_from = estimate # Use estimate values as cell values
+    ) %>%
+    mutate(year = year) %>% # Add a year column
+    select(year, NAME, everything()) # Reorder columns to put year first
+  
+  # Store the data in the list
+  all_data[[as.character(year)]] <- pa_acs_wide
+}
+
+# Combine all yearly data into a single dataframe
+combined_data_5year <- bind_rows(all_data)
+
+# View the combined data
+print(combined_data_5year)
+```
+The yearly data is not collected often enough and is only for counties with a population over 65,000 so we will disregard it
+```{r}
+# This is for the yearly data
+
+# Define the years 
+years <- seq(2011, 2019, by = 1) # only goes 2011 to 2019 for the yearly data
+
+# Initialize an empty list to store data for each year
+all_data <- list()
+
+# Loop through each year and pull data
+for (year in years) {
+  cat("Pulling data for year:", year, "\n")
+  
+  # Pull ACS 5-Year Estimates for Pennsylvania counties
+  pa_acs <- get_acs(
+    geography = "county",
+    variables = c(
+      total_population = "B01003_001",       # Total population
+      median_household_income = "B19013_001", # Median household income
+      poverty_rate = "C17002_002",          # Poverty rate
+      median_home_value = "B25077_001",     # Median home value
+      homeownership_rate_owner = "B25003_002", # Owner-occupied housing
+      homeownership_rate_renter = "B25003_003", # Renter-occupied housing
+      total_pop_over_25 = "B15003_001",       # The amount of the population over 25 which is what the education counts count for 
+      high_school_graduates = "B15003_017", # High school graduates
+      bachelor_degree = "B15003_022",      # Bachelor’s degree
+      unemployment = "B23025_005",         # Unemployed
+      labor_force = "B23025_003"           # Labor force
+    ),
+    state = "PA",
+    year = year,
+    survey = "acs1", 
+    geometry = FALSE
+  )
+  
+  # Reshape the data from long to wide format
+  pa_acs_wide <- pa_acs %>%
+    select(-moe) %>% # Remove margin of error column if not needed
+    pivot_wider(
+      names_from = variable, # Use variable names as column headers
+      values_from = estimate # Use estimate values as cell values
+    ) %>%
+    mutate(year = year) %>% # Add a year column
+    select(year, NAME, everything()) # Reorder columns to put year first
+  
+  # Store the data in the list
+  all_data[[as.character(year)]] <- pa_acs_wide
+}
+
+# Combine all yearly data into a single dataframe
+combined_data_yearly <- bind_rows(all_data)
+
+# View the combined data
+print(combined_data_yearly)
+```
+
+Now we need to stretch the yearly data into monthly data by taking the observations from the current year and the future year and making it a linear amount to the next known point of data
+
+```{r}
+# Expand yearly data to monthly
+monthly_data <- combined_data_5year %>%
+  mutate(month = list(seq(1, 12))) %>%  
+  unnest(month) %>%                    
+  arrange(year, month)  
+```
+
+### Crime data is not really feasable to get on a county by county level since it it broken out by departments and the data is not widly reported
+
+## Redo of the redfin data but just for counties this time
+```{r}
+# Filter the dataset to include only Pennsylvania counties
+pa_counties <- redfin_county_data %>%
+  filter(state_code == "PA", property_type == "All Residential")
+
+pa_counties_step <- redfin_county_data %>%
+  filter(state_code == "PA", property_type == "All Residential")
+
+```
+```{r}
+# Check column names in pa_counties
+colnames(pa_counties)
+
+# Check column names in monthly_data
+colnames(monthly_data)
+```
+
+
+```{r}
+head(combined_data_5year)
+```
+
+
+
+### Create the percentages for wach variables
+```{r}
+combined_data_5year <- combined_data_5year %>%
+  mutate(
+    households_with_children_percent = (household_children / total_households) * 100,
+    households_married_percent = (household_married / total_households) * 100,
+    single_parent_household_percent = ((single_male_parent_households + single_female_parent_households) / total_households) * 100,
+    single_male_parent_household_percent = (single_male_parent_households / total_households) * 100,
+    single_female_parent_household_percent = (single_female_parent_households / total_households) * 100,
+    high_school_graduates_percent = (high_school_graduates / total_pop_over_25) * 100,
+    higher_education_percent = ((associates_degree+bachelor_degree+masters_degree+professional_school_degree
+      + doctorate_degree) / total_pop_over_25) * 100,
+    advanced_degree_percent = ((masters_degree + professional_school_degree + doctorate_degree) / total_pop_over_25) * 100,
+    advanced_vs_bachelor_percent = ((masters_degree + professional_school_degree + doctorate_degree) / bachelor_degree) * 100,
+    associates_degree_percent = (associates_degree / total_pop_over_25) * 100,
+    bachelor_degree_percent = (bachelor_degree / total_pop_over_25) * 100,
+    professional_school_degree_percent = (professional_school_degree / total_pop_over_25) * 100,
+    doctorate_degree_percent = (doctorate_degree / total_pop_over_25) * 100,
+    labor_force_percent = (labor_force / total_population) * 100,
+    unemployment_percent = (unemployment / total_population) * 100,
+    owner_household_percent = (homeownership_rate_owner / total_households) * 100,
+    renter_household_percent = (homeownership_rate_renter / total_households) * 100,
+    owner_renter_ratio_percent = (homeownership_rate_owner / (homeownership_rate_owner + homeownership_rate_renter)) * 100,
+    insured_percent = (insured_pop / total_population) * 100,
+    uninsured_percent = 100 - insured_percent,
+    poverty_percent = ((pop_poverty_under_0.5+pop_poverty_0.5_to_0.99) / poverty_rate_total) * 100,
+    severe_poverty_percent = (pop_poverty_under_0.5 / poverty_rate_total) * 100,
+    pop_over_25_percent = (total_pop_over_25 / total_population) * 100,
+    pop_under_25_percent = ((total_population - total_pop_over_25) / total_population) * 100,
+    unemployment_rate = (unemployment / labor_force) * 100,
+    not_in_labor_force_percent = ((total_population - labor_force) / total_population) * 100,
+    non_high_school_grad_percent = ((total_pop_over_25 - high_school_graduates) / total_pop_over_25) * 100
+    )
+```
+
+```{r}
+monthly_data_step <- combined_data_5year %>%
+  # Create monthly rows
+  mutate(month = list(seq(1, 12))) %>%  
+  unnest(month) %>%                    
+  # Create proper date column
+  mutate(date = as.Date(paste(year, month, "01", sep = "-"))) %>%
+  # Sort properly
+  arrange(NAME, date)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+# Ensure data is sorted correctly
+combined_data_5year <- combined_data_5year %>%
+  arrange(NAME, year)
+
+# Get numeric columns (excluding year, NAME, and GEOID)
+num_cols <- names(combined_data_5year)[sapply(combined_data_5year, is.numeric)]
+num_cols <- setdiff(num_cols, "year")  # Keep 'year' out of numeric calculations
+
+# Expand the data frame to include months
+monthly_data <- combined_data_5year %>%
+  group_by(NAME) %>%
+  arrange(year) %>%
+  mutate(next_year = lead(year)) %>%
+  filter(!is.na(next_year)) %>%  # Remove last year since it has no future value to interpolate
+  uncount(12, .id = "month") %>%  # Repeat each row 12 times for each month
+  mutate(month = rep(1:12, times = n()/12)) %>%
+  mutate(year_month = year + (month - 1) / 12)  # Convert to a decimal year
+
+# Interpolate numerical features
+for (col in num_cols) {
+  monthly_data[[col]] <- monthly_data[[col]] + 
+    (monthly_data$month / 12) * (lead(combined_data_5year[[col]]) - monthly_data[[col]])
+}
+
+# Keep categorical columns as they are
+monthly_data <- monthly_data %>%
+  select(year_month, NAME, GEOID, month, all_of(num_cols))
+
+# Print sample result
+head(monthly_data)
+
+```
+
+Now we need to make the data into monthly form and to do this we will assume a linear change between each yearly data point and use that to generate the monthly data. This is a mildly strong assumption however since the data is already a 5 year aggrigate and the data is collected all year round to make the final number we are going to move forward with our idea to convert it to linear monthly data. There is no other way to do this unless we stick to having the yearly values be static and jump up each new year. 
+
+```{r}
+# Gather the numeric columns that will be transitioned to monthly
+num_cols <- names(combined_data_5year)[sapply(combined_data_5year, is.numeric)]
+num_cols <- setdiff(num_cols, "year")
+
+# For each county make new columns for the next year value
+combined_data_5year <- combined_data_5year %>%
+  group_by(NAME) %>%
+  arrange(year) %>%
+  # Create a new column for each numeric column that holds the next year value
+  mutate(across(all_of(num_cols), ~ lead(.x), .names = "next_{.col}")) %>%
+  ungroup()
+
+# Remove the final year as it would be flat and not adjusted
+data_for_interp <- combined_data_5year %>%
+  filter(!is.na(next_total_population))
+
+# Expand the data so the yearly values have 12 new rows
+monthly_data <- data_for_interp %>%
+  uncount(12, .id = "month") %>%  # create the month column (1 through 12)
+  # Create a new column in "YYYY-MM" format; sprintf ensures the month is two digits
+  mutate(year_month = paste0(year, "-", sprintf("%02d", month)))
+
+# Calculate each month value
+#   Formula: monthly_value = current_year_value + (month/12) * (next_year_value - current_year_value)
+for (col in num_cols) {
+  # Get the names of the current and next values
+  cur_col  <- col
+  next_col <- paste0("next_", col)
+  
+  monthly_data[[col]] <- monthly_data[[cur_col]] +
+    (monthly_data$month / 12) * (monthly_data[[next_col]] - monthly_data[[cur_col]])
+}
+
+# keep the desired colums
+monthly_data <- monthly_data %>%
+  select(year_month, NAME, GEOID, month, all_of(num_cols))
+
+# Round all of the relevant features up so we do not have half of a person for example in our population count
+cols_to_round <- num_cols[!grepl("percent", num_cols, ignore.case = TRUE)]
+monthly_data <- monthly_data %>%
+  mutate(across(all_of(cols_to_round), ceiling))
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Identify all percent features in the monthly_data dataset.
+percent_features <- names(monthly_data)[grepl("percent", names(monthly_data), ignore.case = TRUE)]
+
+# Loop over each percent feature to create a separate plot.
+for (feat in percent_features) {
+  
+  # For each county, get the final monthly record.
+  final_month_data <- monthly_data %>% 
+    group_by(NAME) %>% 
+    filter(year_month == max(year_month)) %>% 
+    ungroup()
+  
+  # Identify the "best" county (highest value) and "worst" county (lowest value) at the final month.
+  best_row  <- final_month_data[which.max(final_month_data[[feat]]), ]
+  worst_row <- final_month_data[which.min(final_month_data[[feat]]), ]
+  
+  # Create the plot:
+  p <- ggplot(monthly_data, aes(x = year_month, y = .data[[feat]], group = NAME)) +
+    # Plot all counties in light gray.
+    geom_line(color = "gray80", size = 0.5, alpha = 0.6) +
+    # Highlight the best county with a blue line.
+    geom_line(data = filter(monthly_data, NAME == best_row$NAME),
+              aes(x = year_month, y = .data[[feat]]),
+              color = "blue", size = 1.2) +
+    # Highlight the worst county with a red line.
+    geom_line(data = filter(monthly_data, NAME == worst_row$NAME),
+              aes(x = year_month, y = .data[[feat]]),
+              color = "red", size = 1.2) +
+    labs(title = paste("Time Series of", feat),
+         x = "Year",
+         y = feat) +
+    theme_minimal() +
+    # Remove the legend.
+    theme(legend.position = "none",
+          axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Add text annotations at the final point for best and worst counties.
+  # Adjust hjust/vjust as needed to position the labels.
+  p <- p +
+    geom_text(data = best_row, 
+              aes(x = year_month, y = .data[[feat]], 
+                  label = paste("Highest:", NAME)),
+              hjust = 1.1, vjust = -1.5, color = "blue", size = 3) +
+    geom_text(data = worst_row, 
+              aes(x = year_month, y = .data[[feat]], 
+                  label = paste("Lowest:", NAME)),
+              hjust = 1.1, vjust = 1.5, color = "red", size = 3)
+  
+  # Display the plot for this feature.
+  print(p)
+}
+```
+
+### Now we need to merge together the two datasets into our final one to work with:  
+
+```{r}
+# Split the period_begin column into year, month, and day
+pa_counties <- pa_counties %>%
+  separate(period_begin, into = c("year", "month", "day"), sep = "-") %>%
+  separate(region, into = c("county", "state"), sep = ", ")
+```
+
+
+```{r}
+monthly_data <- monthly_data %>%
+ separate(year_month, into = c("year", "month"), sep = "-") %>%
+ separate(NAME, into = c("county", "state"), sep = ", ")
+```
+
+```{r}
+# Merge the two datasets on year, month, and county
+final_data <- left_join(pa_counties, monthly_data, by = c("year", "month", "county"))
+```
+
+```{r}
+# Drop the specified columns
+final_data <- final_data %>%
+  select(-day, -period_end, -period_duration, -is_seasonally_adjusted, -state.x, -state_code, -region_type, -region_type_id, -city, -table_id, -property_type, -property_type_id, -parent_metro_region, -parent_metro_region_metro_code)
+```
+
+```{r}
+# Make a date column for timeseries data and forecasting with the XGBoost
+final_data <- final_data %>%
+  mutate(date = as.Date(paste(year, month, "01", sep = "-")))
+head(final_data)
+```
+
+# The rebiuld for teh xgboost data and forecasting
+
+Building the data step wise
+
+```{r}
+# Split the region
+monthly_data_step <- monthly_data_step %>% 
+  separate(NAME, into = c("county", "state"), sep = ", ")
+```
+
+```{r}
+# Split the region
+pa_counties_step <- pa_counties_step %>% 
+  separate(region, into = c("county", "state"), sep = ", ")
+```
+
+```{r}
+# Merge the data sets together
+xgboost_data <- monthly_data_step %>%
+  left_join(
+    pa_counties_step,
+    by = c("county" = "county", "date" = "period_begin")
+  )
+```
+
+```{r}
+head(xgboost_data)
+```
+
+```{r}
+# Drop the specified columns
+xgboost_data <- xgboost_data %>%
+  select( -period_end, -period_duration, -is_seasonally_adjusted, -state_code, -region_type, -region_type_id, -city, -table_id, -property_type, -property_type_id, -parent_metro_region, -parent_metro_region_metro_code)
+```
+
+```{r}
+# Make the affordabioity ratio
+xgboost_data <- xgboost_data %>% 
+  mutate(affordability_ratio = median_sale_price / median_household_income)
+```
+
+# Make and train the xgboost model for forecasting 2021-2023
+
+Training the model
+```{r}
+library(dplyr)
+library(xgboost)
+library(lubridate)
+
+# 1. Prepare Data: Keep Monthly
+metro_areas <- c("Philadelphia County", "Montgomery County", "Delaware County", 
+                 "Chester County", "Bucks County", "Allegheny County", 
+                 "Westmoreland County", "Washington County", "Beaver County", 
+                 "Dauphin County", "Cumberland County", "Perry County")
+
+data_model <- xgboost_data %>%
+  filter(county %in% metro_areas) %>%
+  mutate(
+    year = year(date),  
+    month = month(date)
+  ) %>%
+  arrange(county, date)  # Ensure correct chronological order
+
+# 2. Create Lag Features (Using Monthly Lags)
+data_model <- data_model %>%
+  group_by(county) %>%
+  mutate(
+    lag_price_1m = lag(median_sale_price, 1),  # 1 month ago
+    lag_price_3m = lag(median_sale_price, 3),  # 3 months ago
+    lag_price_6m = lag(median_sale_price, 6),  # 6 months ago
+    lag_income_1m = lag(median_household_income, 1),
+    lag_income_3m = lag(median_household_income, 3),
+    lag_income_6m = lag(median_household_income, 6)
+  ) %>%
+  ungroup()
+
+# 3. Define XGBoost Training Function for Monthly Forecasting
+train_xgboost <- function(data, target_variable, predictors) {
+  set.seed(123)
+  
+  train_data <- data %>% filter(date < "2021-01-01")  # Use past data
+  future_data <- data %>% filter(date >= "2021-01-01")  # Predict future months
+  
+  train_matrix <- xgb.DMatrix(data = as.matrix(train_data[, predictors]),
+                              label = train_data[[target_variable]])
+  
+  params <- list(
+    objective = "reg:squarederror",
+    eval_metric = "rmse",
+    max_depth = 6,
+    eta = 0.1
+  )
+
+  xgb_model <- xgb.train(
+    params = params,
+    data = train_matrix,
+    nrounds = 100
+  )
+  
+  # Predict future values
+  future_matrix <- xgb.DMatrix(data = as.matrix(future_data[, predictors]))
+  future_preds <- predict(xgb_model, newdata = future_matrix)
+  
+  return(future_preds)
+}
+
+# Define predictor variables
+predictors <- c("lag_price_1m", "lag_price_3m", "lag_price_6m", 
+                "lag_income_1m", "lag_income_3m", "lag_income_6m",
+                "pending_sales", "median_dom")
+
+# 4. Train models and predict future months
+data_future <- data_model %>% filter(date >= "2021-01-01")  # Future months
+
+data_future$predicted_price <- train_xgboost(data_model, "median_sale_price", predictors)
+data_future$predicted_income <- train_xgboost(data_model, "median_household_income", predictors)
+
+# 5. Compute Predicted Affordability Ratio for Future Months
+data_future <- data_future %>%
+  mutate(predicted_affordability = predicted_price / predicted_income)
+
+# 6. Identify the Most Affordable County for Each Month
+most_affordable <- data_future %>%
+  group_by(date) %>%
+  slice_min(order_by = predicted_affordability, n = 1) %>%
+  select(date, county, predicted_price, predicted_income, predicted_affordability) %>%
+  ungroup()  # Ensure it's not grouped anymore
+  # Select the most affordable county for each month
+
+# View Results
+print(most_affordable)
+
+```
+
+```{r}
+head(xgboost_data)
+```
+
+# The XGBoost model as a proof of concept to predict 2021-2024
+
+First we will get all of the libraries and set up the data to go into the model:
+
+```{r}
+# Load necessary visualization libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork) # For combining multiple plots
+library(viridis)   # For better color palettes
+library(scales)    # For better axis formatting
+library(xgboost)   # For XGBoost modeling
+
+# Define selected counties
+metro_areas <- c("Philadelphia County", "Montgomery County", "Delaware County", 
+                 "Chester County", "Bucks County", "Allegheny County", 
+                 "Westmoreland County", "Washington County", "Beaver County", 
+                 "Dauphin County", "Cumberland County", "Perry County")
+
+# Filter xgboost_data for selected counties
+xgboost_data <- xgboost_data %>% filter(county %in% metro_areas)
+
+# Ensure affordability_ratio has no missing values
+xgboost_data$affordability_ratio[is.na(xgboost_data$affordability_ratio)] <- 
+  mean(xgboost_data$affordability_ratio, na.rm = TRUE)
+
+# Select numerical features EXCLUDING the target variable (affordability_ratio)
+# Also explicitly exclude median_sale_price and median_household_income
+numeric_features <- xgboost_data %>%
+  select(-affordability_ratio, -median_sale_price, -median_household_income) %>%
+  select_if(is.numeric) 
+
+# Prepare training and testing indices based on date
+train_indices <- which(xgboost_data$date < "2021-01-01")
+test_indices <- which(xgboost_data$date >= "2021-01-01")
+
+```
+
+Next we will train the model using the features excluding the variable of interest and the components that make it
+
+```{r}
+# Step 1: Train Initial Model with All Remaining Predictors
+
+# Create DMatrix objects using all predictors (except the excluded ones)
+dtrain_all <- xgb.DMatrix(
+  data = as.matrix(numeric_features[train_indices, ]),
+  label = xgboost_data$affordability_ratio[train_indices]
+)
+dtest_all <- xgb.DMatrix(
+  data = as.matrix(numeric_features[test_indices, ]),
+  label = xgboost_data$affordability_ratio[test_indices]
+)
+
+# Set up XGBoost parameters
+params <- list(
+  objective = "reg:squarederror",
+  eta = 0.1,
+  max_depth = 6,
+  min_child_weight = 1,
+  subsample = 0.8,
+  colsample_bytree = 0.8
+)
+
+# Train the initial model
+xgb_model_all <- xgb.train(
+  params = params,
+  data = dtrain_all,
+  nrounds = 100,
+  watchlist = list(train = dtrain_all, test = dtest_all),
+  early_stopping_rounds = 10,
+  verbose = 0
+)
+
+# Get feature importance
+importance_matrix <- xgb.importance(
+  feature_names = colnames(numeric_features),
+  model = xgb_model_all
+)
+```
+
+Then we will do feature selection and importance using the built in functions for importance in XGBoost
+
+```{r} 
+# Step 2: Feature Selection using XGBoost's Importance 
+
+# Convert the importance matrix to a tibble (modern data frame)
+importance_df <- as_tibble(importance_matrix)
+
+# Select top 10 features using explicit dplyr functions
+top_features <- importance_df %>%
+  arrange(desc(Gain)) %>% # Sort by descending Gain
+  dplyr::slice(1:10) %>% # Take first 10 rows
+  pull(Feature) # Extract feature names
+
+# Check selected features
+print(top_features)
+```
+
+Then we will train the model again but use the selected features
+
+```{r}
+# Step 3: Retrain Model Using Only the Selected Features 
+
+# Subset the predictors to only include the top features
+numeric_features_reduced <- numeric_features[, top_features, drop = FALSE]
+
+# Create new DMatrix objects with the reduced set of features
+dtrain_reduced <- xgb.DMatrix(
+  data = as.matrix(numeric_features_reduced[train_indices, ]),
+  label = xgboost_data$affordability_ratio[train_indices]
+)
+dtest_reduced <- xgb.DMatrix(
+  data = as.matrix(numeric_features_reduced[test_indices, ]),
+  label = xgboost_data$affordability_ratio[test_indices]
+)
+
+# Retrain the model using the reduced feature set
+xgb_model_reduced <- xgb.train(
+  params = params,
+  data = dtrain_reduced,
+  nrounds = 100,
+  watchlist = list(train = dtrain_reduced, test = dtest_reduced),
+  early_stopping_rounds = 10,
+  verbose = 0
+)
+```
+
+Now we can use the retrained model to make predictions and visualizations
+
+```{r}   
+# Step 4: Predictions and Visualizations  
+
+# Make predictions ONLY ON TEST DATA
+test_predictions <- predict(
+  xgb_model_reduced, 
+  as.matrix(numeric_features_reduced[test_indices, ])
+)
+
+# Create a NEW DATA FRAME for predictions (don't modify original data)
+predicted_data <- xgboost_data[test_indices, ] %>%
+  mutate(predicted_affordability = test_predictions)
+
+# 1. Combine actual and predicted data for comparison
+comparison_data <- predicted_data %>%
+  select(county, date, affordability_ratio, predicted_affordability)
+
+# 2. Calculate prediction accuracy metrics
+accuracy_metrics <- comparison_data %>%
+  group_by(county) %>%
+  summarize(
+    MAE = mean(abs(affordability_ratio - predicted_affordability), na.rm = TRUE),
+    RMSE = sqrt(mean((affordability_ratio - predicted_affordability)^2, na.rm = TRUE)),
+    accuracy_pct = 100 * (1 - mean(abs(affordability_ratio - predicted_affordability) / affordability_ratio, na.rm = TRUE))
+  )
+
+# 3. Visualization 1: Line plots comparing predicted vs actual for each county
+comparison_long <- comparison_data %>%
+  pivot_longer(
+    cols = c(affordability_ratio, predicted_affordability),
+    names_to = "type",
+    values_to = "value"
+  ) %>%
+  mutate(type = ifelse(type == "affordability_ratio", "Actual", "Predicted"))
+
+comparison_plot <- ggplot(comparison_long, aes(x = date, y = value, color = type, linetype = type)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ county, scales = "free_y") +
+  scale_color_manual(values = c("Actual" = "#3366CC", "Predicted" = "#CC3366")) +
+  labs(
+    title = "Affordability Ratio: Predicted vs Actual (2021+)",
+    subtitle = "Model excluding median_sale_price and median_household_income",
+    x = "Date",
+    y = "Affordability Ratio",
+    color = "Data Type",
+    linetype = "Data Type"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.background = element_rect(fill = "lightgray", color = NA),
+    strip.text = element_text(face = "bold"),
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+# 4. Visualization 2: Bar chart of prediction accuracy metrics
+accuracy_plot <- accuracy_metrics %>%
+  pivot_longer(
+    cols = c(MAE, RMSE, accuracy_pct),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  ggplot(aes(x = reorder(county, value), y = value, fill = metric)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ metric, scales = "free_y") +
+  scale_fill_viridis(discrete = TRUE) +
+  labs(
+    title = "Prediction Accuracy Metrics by County",
+    subtitle = "Model trained without median_sale_price and median_household_income",
+    x = "County",
+    y = "Value"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  )
+
+# Display the plots
+print(comparison_plot)
+print(accuracy_plot)
+
+# Plot feature importance from the reduced model
+importance_matrix_reduced <- xgb.importance(feature_names = colnames(numeric_features_reduced), 
+                                          model = xgb_model_reduced)
+xgb.plot.importance(importance_matrix_reduced, top_n = 10)
+```
+
+# Predictions out to 2028 using the findings of the predictions for 2021-2024
+
+As before we need to reload our libraries and set up the data for the model
+
+```{r}
+# Load necessary visualization libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork) # For combining multiple plots
+library(viridis)   # For better color palettes
+library(scales)    # For better axis formatting
+library(xgboost)   # For XGBoost modeling
+library(lubridate) # For date handling
+
+# Define selected counties
+metro_areas <- c("Philadelphia County", "Montgomery County", "Delaware County", 
+                 "Chester County", "Bucks County", "Allegheny County", 
+                 "Westmoreland County", "Washington County", "Beaver County", 
+                 "Dauphin County", "Cumberland County", "Perry County")
+
+# Filter xgboost_data for selected counties
+xgboost_data <- xgboost_data %>% filter(county %in% metro_areas)
+
+# Ensure affordability_ratio has no missing values
+xgboost_data$affordability_ratio[is.na(xgboost_data$affordability_ratio)] <- 
+  mean(xgboost_data$affordability_ratio, na.rm = TRUE)
+
+# Select numerical features EXCLUDING the target variable (affordability_ratio)
+numeric_features <- xgboost_data %>%
+  select(-affordability_ratio, -median_household_income, -median_sale_price) %>%
+  select_if(is.numeric) 
+
+# Use all available data for training
+train_indices <- 1:nrow(xgboost_data)
+
+# Create DMatrix objects using all data for training
+dtrain_all <- xgb.DMatrix(
+  data = as.matrix(numeric_features[train_indices, ]),
+  label = xgboost_data$affordability_ratio[train_indices]
+)
+
+# Set up XGBoost parameters
+params <- list(
+  objective = "reg:squarederror",
+  eta = 0.1,
+  max_depth = 6,
+  min_child_weight = 1,
+  subsample = 0.8,
+  colsample_bytree = 0.8
+)
+```
+
+Now we can train the model and get the feature importance rankings
+
+```{r}
+# Step 1: Train the model and get the importances
+
+# Train the model using all data
+xgb_model <- xgb.train(
+  params = params,
+  data = dtrain_all,
+  nrounds = 100, 
+  verbose = 0
+)
+
+# Get feature importance
+importance_matrix <- xgb.importance(feature_names = colnames(numeric_features), 
+                                    model = xgb_model)
+
+# Select top 15 features
+top_features <- importance_matrix %>%
+  as_tibble() %>%
+  arrange(desc(Gain)) %>%
+  slice_head(n = 15) %>%
+  pull(Feature)
+
+# Use reduced feature set for better forecasting
+numeric_features_reduced <- numeric_features[, top_features, drop = FALSE]
+
+# Retrain model with reduced features
+dtrain_reduced <- xgb.DMatrix(
+  data = as.matrix(numeric_features_reduced),
+  label = xgboost_data$affordability_ratio
+)
+
+xgb_model_reduced <- xgb.train(
+  params = params,
+  data = dtrain_reduced,
+  nrounds = 100, 
+  verbose = 0
+)
+
+```
+
+Forecast the data out to 2028
+
+```{r}
+# Step 2: Create future data for forecasting (2025-2028) 
+
+# Get the most recent date in the dataset
+most_recent_date <- max(xgboost_data$date)
+
+# Determine the frequency of observations (assuming quarterly or monthly)
+date_diff <- as.numeric(diff(sort(unique(xgboost_data$date)))[1])
+if (date_diff >= 89 && date_diff <= 92) {
+  # Quarterly data
+  freq <- "quarter"
+  periods_per_year <- 4
+} else {
+  # Monthly data
+  freq <- "month"
+  periods_per_year <- 12
+}
+
+# Create date sequence through 2028
+forecast_end_date <- as.Date("2028-12-31")
+date_sequence <- seq(from = most_recent_date + days(1), 
+                    to = forecast_end_date, 
+                    by = freq)
+
+# For each county, create future data by extending the most recent values
+future_data_list <- list()
+
+for (county_name in metro_areas) {
+  # Get most recent data for this county
+  latest_county_data <- xgboost_data %>%
+    filter(county == county_name) %>%
+    arrange(desc(date)) %>%
+    dplyr::slice(1)  # <-- Explicitly use dplyr::slice()
+  
+  # Create a template for future data
+  county_future <- tibble(
+    county = county_name,
+    date = date_sequence
+  )
+  
+  # Add year, month, quarter information
+  county_future <- county_future %>%
+    mutate(
+      year = year(date),
+      month = month(date),
+      quarter = quarter(date)
+    )
+  
+  # Copy the most recent values for all other features
+  for (col in colnames(numeric_features_reduced)) {
+    if (col %in% c("year", "month", "quarter", "date")) next
+    
+    # For time-based features, project forward with trends
+    if (grepl("price|income|rate|ratio", col, ignore.case = TRUE)) {
+      # Calculate trend from last 2 years of data
+      trend_data <- xgboost_data %>%
+        filter(
+          county == county_name,
+          date >= most_recent_date - years(2)
+        )
+      
+      if (nrow(trend_data) >= 4) {
+        # Calculate average quarterly/monthly change
+        avg_change <- (tail(trend_data[[col]], 1) - trend_data[[col]][1]) / nrow(trend_data)
+        
+        # Create sequence of values with the trend
+        start_val <- latest_county_data[[col]]
+        periods <- 1:length(date_sequence)
+        county_future[[col]] <- start_val + (periods * avg_change)
+      } else {
+        # Not enough data for trend, just use last value
+        county_future[[col]] <- latest_county_data[[col]]
+      }
+    } else {
+      # For non-time series features, use the most recent value
+      county_future[[col]] <- latest_county_data[[col]]
+    }
+  }
+  
+  # Add to the list
+  future_data_list[[county_name]] <- county_future
+}
+
+# Combine all future data
+future_data <- bind_rows(future_data_list)
+
+# Extract numeric features for prediction
+future_features <- future_data %>%
+  select(all_of(top_features))
+
+# Make predictions for future data
+future_data$predicted_affordability <- predict(xgb_model_reduced, 
+                                              as.matrix(future_features))
+```
+
+Combine the data for visualizations
+
+```{r}
+# Step 3: Combine actual and forecasted data for visualization 
+
+# Add predictions to the original data
+xgboost_data$predicted_affordability <- predict(xgb_model_reduced, 
+                                               as.matrix(numeric_features_reduced))
+xgboost_data$data_type <- "Actual"
+
+# Prepare future data for combining
+future_data$affordability_ratio <- NA  # No actual values for future
+future_data$data_type <- "Forecast"
+
+# Select only needed columns from both datasets
+actual_data_slim <- xgboost_data %>%
+  select(county, date, affordability_ratio, predicted_affordability, data_type)
+
+future_data_slim <- future_data %>%
+  select(county, date, affordability_ratio, predicted_affordability, data_type)
+
+# Combine actual and future data
+combined_data <- bind_rows(actual_data_slim, future_data_slim) %>%
+  arrange(county, date)
+```
+
+Now we can visualize the forecasts and the actual data to get an idea of where the affordability of the areas is going in the next few years
+
+```{r}  
+# Step 4: Create visualizations 
+
+# 1. Line plot showing actual, predicted, and forecasted values
+forecast_plot <- combined_data %>%
+  pivot_longer(
+    cols = c(affordability_ratio, predicted_affordability),
+    names_to = "series_type",
+    values_to = "value"
+  ) %>%
+  mutate(
+    display_type = case_when(
+      series_type == "affordability_ratio" & data_type == "Actual" ~ "Actual",
+      series_type == "predicted_affordability" & data_type == "Actual" ~ "Predicted",
+      series_type == "predicted_affordability" & data_type == "Forecast" ~ "Forecast",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(display_type)) %>%
+  ggplot(aes(x = date, y = value, color = display_type, linetype = display_type)) +
+  geom_line(size = 1) +
+  geom_point(aes(size = display_type == "Actual"), show.legend = FALSE) +
+  scale_size_manual(values = c("TRUE" = 1.5, "FALSE" = 0)) +
+  geom_vline(xintercept = as.numeric(most_recent_date), 
+             linetype = "dashed", color = "gray50") +
+  facet_wrap(~ county, scales = "free_y") +
+  scale_color_manual(values = c("Actual" = "#3366CC", 
+                                "Predicted" = "#CC3366",
+                                "Forecast" = "#FF6600")) +
+  scale_linetype_manual(values = c("Actual" = "solid", 
+                                   "Predicted" = "dashed",
+                                   "Forecast" = "dotdash")) +
+  labs(
+    title = "Affordability Ratio: Historical and Forecast (2025-2028)",
+    subtitle = "Vertical line marks the transition from actual to forecasted data",
+    x = "Date",
+    y = "Affordability Ratio",
+    color = "Data Type",
+    linetype = "Data Type"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.background = element_rect(fill = "lightgray", color = NA),
+    strip.text = element_text(face = "bold"),
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+# 2. Feature importance plot
+importance_plot <- xgb.plot.importance(importance_matrix, top_n = 10)
+
+# Display the plots
+print(forecast_plot)
+print(importance_plot)
+
+# 3. Create a summary of forecasted trends
+forecast_summary <- future_data %>%
+  group_by(county) %>%
+  summarize(
+    start_affordability = first(predicted_affordability),
+    end_affordability = last(predicted_affordability),
+    change = end_affordability - start_affordability,
+    percent_change = 100 * change / start_affordability,
+    trend = ifelse(change > 0, "Improving", "Worsening")
+  ) %>%
+  arrange(desc(percent_change))
+
+print(forecast_summary)
+```
+
+
+
+
+
+
